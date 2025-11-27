@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>L.I.S.A. - Posture Guardian</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --text-color: #e0e0e0;
+            --card-bg: #1e1e1e;
+            --accent-color: #00e676;
+            --secondary-text: #aaa;
+            --input-bg: #333;
+            --input-border: #444;
+            --shadow-color: rgba(0,0,0,0.5);
+            --container-border: #333;
+        }
+
+        body.light-theme {
+            --bg-color: #f0f2f5;
+            --text-color: #333;
+            --card-bg: #ffffff;
+            --accent-color: #00c853;
+            --secondary-text: #666;
+            --input-bg: #fff;
+            --input-border: #ccc;
+            --shadow-color: rgba(0,0,0,0.1);
+            --container-border: #ddd;
+        }
+
+        body { 
+            background: var(--bg-color); 
+            color: var(--text-color); 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            margin: 0;
+            padding: 20px;
+            transition: background 0.3s, color 0.3s;
+        }
+        h1 {
+            font-weight: 300;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+            color: var(--accent-color);
+        }
+        
+        /* Controls Section */
+        .controls {
+            background: var(--card-bg);
+            padding: 15px 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px var(--shadow-color);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 20px;
+            transition: background 0.3s;
+        }
+        
+        .separator {
+            width: 1px;
+            height: 24px;
+            background-color: var(--input-border);
+            margin: 0 4px;
+        }
+
+        label { font-size: 14px; color: var(--secondary-text); }
+        select, button {
+            background: var(--input-bg);
+            color: var(--text-color);
+            border: 1px solid var(--input-border);
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        /* Fixed width for main buttons to prevent UI jitter */
+        #pauseBtn, #resetBtn, #viewBtn { min-width: 130px; text-align: center; }
+        #themeBtn { min-width: 50px; text-align: center; }
+        
+        select:hover, button:hover { background: var(--input-border); }
+        button.active { background: #d32f2f; border-color: #b71c1c; color: white; }
+
+        /* Container to overlap video and canvas */
+        .container { 
+            position: relative; 
+            width: 640px; 
+            height: 480px; 
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 230, 118, 0.1);
+            border: 2px solid var(--container-border);
+        }
+        video { position: absolute; width: 100%; height: 100%; transform: scaleX(-1); object-fit: cover; } 
+        canvas { position: absolute; width: 100%; height: 100%; transform: scaleX(-1); } 
+        
+        #status { 
+            margin-top: 20px; 
+            font-size: 18px; 
+            font-weight: 500; 
+            padding: 10px 20px;
+            border-radius: 8px;
+            background: var(--card-bg);
+            min-width: 300px;
+            text-align: center;
+            transition: background 0.3s;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+</head>
+<body>
+
+    <h1>L.I.S.A. <span style="font-size: 0.5em; color: var(--secondary-text);">Long Interval Sitting Alert</span></h1>
+    
+    <div class="controls">
+        <div>
+            <label for="timeSelect">Alert After:</label>
+            <select id="timeSelect">
+                <option value="10">10 Seconds (Test)</option>
+                <option value="30" selected>30 Seconds (Demo)</option>
+                <option value="1200">20 Minutes (Real)</option>
+                <option value="1800">30 Minutes</option>
+                <option value="3600">1 Hour</option>
+            </select>
+        </div>
+        
+        <div class="separator"></div>
+
+        <button id="pauseBtn" onclick="togglePause()">⏸️ Pause</button>
+        <button id="resetBtn" onclick="resetTimer()">🔄 Reset</button>
+
+        <div class="separator"></div>
+
+        <button id="viewBtn" onclick="toggleView()">📷 Show Video</button>
+        <select id="themeSelect" onchange="setTheme(this.value)" style="min-width: 110px;">
+            <option value="system" selected>💻 System</option>
+            <option value="light">☀️ Light</option>
+            <option value="dark">🌙 Dark</option>
+        </select>
+    </div>
+
+    <div class="container">
+        <video class="input_video"></video>
+        <canvas class="output_canvas" width="640" height="480"></canvas>
+    </div>
+
+    <div id="status">Initializing Camera...</div>
+
+   <script>
+        const videoElement = document.getElementsByClassName('input_video')[0];
+        const canvasElement = document.getElementsByClassName('output_canvas')[0];
+        const canvasCtx = canvasElement.getContext('2d');
+        const statusText = document.getElementById('status');
+        const timeSelect = document.getElementById('timeSelect');
+
+        // Request Notification Permission immediately
+        if (Notification.permission !== "granted") {
+            Notification.requestPermission();
+        }
+
+        // --- MODULE B: PRESENCE TIMER LOGIC ---
+        let isUserPresent = false;
+        let accumulatedTime = 0; // Total milliseconds sat
+        let lastFrameTime = 0;
+        let lastAlertSecond = -1; // Track the last second we sent an alert
+        let lastNotificationSecond = -1; // Track the last second we sent a notification
+        let timeLimitSeconds = 30; // Default
+        let showVideo = false; // Privacy mode default
+        let isPaused = false;
+
+        // Update limit when dropdown changes
+        timeSelect.addEventListener('change', (e) => {
+            timeLimitSeconds = parseInt(e.target.value);
+            resetTimer();
+        });
+
+        function setTheme(mode) {
+            if (mode === 'system') {
+                const isSystemLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+                if (isSystemLight) {
+                    document.body.classList.add('light-theme');
+                } else {
+                    document.body.classList.remove('light-theme');
+                }
+            } else if (mode === 'light') {
+                document.body.classList.add('light-theme');
+            } else {
+                document.body.classList.remove('light-theme');
+            }
+        }
+
+        // Listen for system changes
+        window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', e => {
+            if (document.getElementById('themeSelect').value === 'system') {
+                setTheme('system');
+            }
+        });
+
+        // Initialize Theme
+        setTheme('system');
+
+        function toggleView() {
+            showVideo = !showVideo;
+            const btn = document.getElementById('viewBtn');
+            btn.innerText = showVideo ? "👁️ Hide Video" : "📷 Show Video";
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            const btn = document.getElementById('pauseBtn');
+            
+            if (isPaused) {
+                btn.innerText = "▶️ Resume";
+                btn.style.borderColor = "#00e676"; // Green border to suggest 'Go'
+                statusText.innerText = "Timer Paused.";
+                statusText.style.color = "#ffeb3b";
+            } else {
+                btn.innerText = "⏸️ Pause";
+                btn.style.borderColor = ""; // Reset
+                statusText.innerText = "Timer Resumed.";
+                statusText.style.color = "#00e676";
+            }
+        }
+
+        function resetTimer() {
+            accumulatedTime = 0;
+            lastAlertSecond = -1;
+            lastNotificationSecond = -1;
+            isPaused = false; 
+            
+            // Reset Pause Button UI
+            const btn = document.getElementById('pauseBtn');
+            btn.innerText = "⏸️ Pause";
+            btn.style.borderColor = "";
+
+            statusText.innerText = "Timer Reset.";
+            statusText.style.color = "#e0e0e0";
+        }
+        
+        // Initialize controls
+        // updateControlState(); // Removed
+        
+        function onResults(results) {
+            accumulatedTime = 0;
+            lastAlertSecond = -1;
+            statusText.innerText = isPaused ? "Timer Reset (Paused)." : "Timer Reset.";
+            statusText.style.color = "#e0e0e0";
+        }
+        
+        function drawGrid(ctx, width, height) {
+            const step = 40;
+            ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--input-border');
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let x = 0; x <= width; x += step) {
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+            }
+            for (let y = 0; y <= height; y += step) {
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+            }
+            ctx.stroke();
+        }
+        
+        function onResults(results) {
+            // 1. Draw Video
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            if (showVideo) {
+                canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            } else {
+                // Privacy Mode: Draw solid background matching the card theme
+                canvasCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--card-bg');
+                canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+                // Draw Grid
+                drawGrid(canvasCtx, canvasElement.width, canvasElement.height);
+            }
+
+            const now = Date.now();
+            let dt = 0;
+            if (lastFrameTime !== 0) {
+                dt = now - lastFrameTime;
+            }
+            lastFrameTime = now;
+
+            // 2. Check Presence
+            if (results.poseLandmarks) {
+                // User is HERE
+                isUserPresent = true;
+                
+                // Draw skeleton (Minimal style)
+                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: 'rgba(0, 255, 118, 0.5)', lineWidth: 2});
+                drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#00e676', lineWidth: 1, radius: 3});
+
+                // Increment Timer (Only if not paused)
+                if (!isPaused) {
+                    accumulatedTime += dt;
+                }
+
+            } else {
+                // User is GONE
+                isUserPresent = false;
+
+                // Auto-reset if limit was reached (User took a break!)
+                if (accumulatedTime >= timeLimitSeconds * 1000) {
+                    resetTimer();
+                }
+            }
+
+            // 3. Display Logic
+            const secondsSat = Math.floor(accumulatedTime / 1000);
+
+            if (secondsSat >= timeLimitSeconds) {
+                // --- TRIGGER STATE ---
+                statusText.innerText = `⚠️ TIME UP! (${secondsSat}s / ${timeLimitSeconds}s)`;
+                statusText.style.color = "#ff5252"; // Red
+
+                // 1. Browser Notification (Every 10 seconds after limit)
+                // We use a tracker variable to ensure it fires exactly once per 10s interval
+                if ((secondsSat - timeLimitSeconds) % 10 === 0) {
+                     if (lastNotificationSecond !== secondsSat) {
+                         if (Notification.permission === "granted") { 
+                             new Notification("L.I.S.A. Alert", {
+                                 body: "Time to move!",
+                                 icon: "https://cdn-icons-png.flaticon.com/512/2554/2554045.png"
+                             });
+                         }
+                         lastNotificationSecond = secondsSat;
+                     }
+                }
+
+                // 2. Call the Backend (The Bridge to LLM)
+                // Alert when limit is reached, and then every 60 seconds thereafter
+                if ((secondsSat - timeLimitSeconds) % 60 === 0) {
+                    if (lastAlertSecond !== secondsSat) {
+                        sendAlertToBackend(secondsSat);
+                        lastAlertSecond = secondsSat;
+                    }
+                }
+
+            } else {
+                // --- NORMAL STATE ---
+                if (isUserPresent) {
+                    statusText.innerText = `User Detected. Sitting: ${secondsSat}s / ${timeLimitSeconds}s`;
+                    statusText.style.color = "#00e676"; // Green
+                } else {
+                    statusText.innerText = `User Away. Timer Paused: ${secondsSat}s`;
+                    statusText.style.color = "#ffeb3b"; // Yellow
+                }
+            }
+
+            canvasCtx.restore();
+        }
+        
+        // --- INITIALIZATION ---
+        const pose = new Pose({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+        }});
+        
+        pose.setOptions({
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        
+        pose.onResults(onResults);
+        
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await pose.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+
+        // --- MODULE C: THE REAL BRIDGE ---
+        async function sendAlertToBackend(duration) {
+            console.log("🚀 Attempting to connect to Go Backend...");
+            
+            try {
+                // NOTE: We use 127.0.0.1 instead of localhost to avoid some Windows network glitches
+                const response = await fetch('http://127.0.0.1:8081/api/alert', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_id: "user_001",
+                        event: "long_sitting",
+                        duration_seconds: duration,
+                        timestamp: Date.now()
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log("✅ Success! LLM Response:", data.message);
+                
+                // Browser speaks the result
+                let speech = new SpeechSynthesisUtterance(data.message);
+                window.speechSynthesis.speak(speech);
+
+            } catch (error) {
+                console.error("❌ CONNECTION FAILED:", error);
+                console.log("Make sure the Go server is running in the terminal!");
+            }
+        }
+
+        camera.start();
+    </script>
+</body>
+</html>
