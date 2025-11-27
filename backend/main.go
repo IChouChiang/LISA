@@ -7,6 +7,9 @@ import (
 	"io/ioutil"
 	"net/http"
 	"time"
+
+	"github.com/getlantern/systray"
+	"lisa-backend/icon"
 )
 
 // --- CONFIGURATION ---
@@ -55,15 +58,39 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func main() {
-	// Wrap the handler with CORS middleware
-	http.HandleFunc("/api/alert", corsMiddleware(handleAlert))
-	
-	fmt.Println("LISA Backend is running on http://localhost:8081")
-	// Bind to 0.0.0.0 to ensure it listens on all interfaces (localhost and 127.0.0.1)
-	err := http.ListenAndServe("0.0.0.0:8081", nil)
-	if err != nil {
-		fmt.Println("CRITICAL ERROR:", err)
-	}
+	systray.Run(onReady, onExit)
+}
+
+func onReady() {
+	systray.SetIcon(icon.Data())
+	systray.SetTitle("L.I.S.A. Backend")
+	systray.SetTooltip("L.I.S.A. Posture Guardian")
+
+	mQuit := systray.AddMenuItem("Quit L.I.S.A.", "Stop the server and exit")
+
+	// Start the server in a goroutine
+	go func() {
+		// Wrap the handler with CORS middleware
+		http.HandleFunc("/api/alert", corsMiddleware(handleAlert))
+
+		fmt.Println("LISA Backend is running on http://localhost:8081")
+		// Bind to 0.0.0.0 to ensure it listens on all interfaces (localhost and 127.0.0.1)
+		err := http.ListenAndServe("0.0.0.0:8081", nil)
+		if err != nil {
+			fmt.Println("CRITICAL ERROR:", err)
+		}
+	}()
+
+	// Handle Quit
+	go func() {
+		<-mQuit.ClickedCh
+		systray.Quit()
+	}()
+}
+
+func onExit() {
+	// Cleanup if needed
+	fmt.Println("L.I.S.A. Backend stopping...")
 }
 
 func handleAlert(w http.ResponseWriter, r *http.Request) {
