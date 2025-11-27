@@ -49,9 +49,11 @@ Simply run the provided batch script in the root folder:
 ```cmd
 start_dev.bat
 ```
-This will:
-1.  Launch the Go backend in a new terminal window.
-2.  Open the frontend interface in your default browser.
+This script has been enhanced to:
+1.  **Auto-configure Proxy:** Sets `GOPROXY` to speed up downloads.
+2.  **Show Progress:** Displays real-time compilation status.
+3.  **System Tray Mode:** Builds and launches the backend as a background app (look for the icon in your taskbar).
+4.  **Launch Frontend:** Opens the interface in your default browser.
 
 ### 3. Manual Launch
 If you prefer to run things manually:
@@ -59,9 +61,12 @@ If you prefer to run things manually:
 **Backend:**
 ```bash
 cd backend
-go run main.go
-# Server starts on localhost:8081
+# Build without console window
+go build -ldflags -H=windowsgui -o lisa-backend.exe main.go
+# Run it
+./lisa-backend.exe
 ```
+*To stop the server, right-click the L.I.S.A. icon in the system tray and select "Quit".*
 
 **Frontend:**
 *   Open `posture-demo/index.html` in your browser.
