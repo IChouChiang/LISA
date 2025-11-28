@@ -1,0 +1,21 @@
+# Secrets
+ds_api.txt
+*.env
+
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+lisa_env/
+
+# OS
+.DS_Store
+Thumbs.db
