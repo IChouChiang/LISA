@@ -142,6 +142,10 @@
             <option value="light">☀️ Light</option>
             <option value="dark">🌙 Dark</option>
         </select>
+        <select id="langSelect" onchange="setLanguage(this.value)" style="min-width: 80px;">
+            <option value="en" selected>🇺🇸 EN</option>
+            <option value="zh">🇨🇳 ZH</option>
+        </select>
     </div>
 
     <div class="container">
@@ -157,6 +161,103 @@
         const canvasCtx = canvasElement.getContext('2d');
         const statusText = document.getElementById('status');
         const timeSelect = document.getElementById('timeSelect');
+
+        // --- I18N (Internationalization) ---
+        let currentLang = 'en';
+        const translations = {
+            en: {
+                subtitle: "Long Interval Sitting Alert",
+                alertAfter: "Alert After:",
+                timeOptions: {
+                    "10": "10 Seconds (Test)",
+                    "30": "30 Seconds (Demo)",
+                    "1200": "20 Minutes (Real)",
+                    "1800": "30 Minutes",
+                    "3600": "1 Hour"
+                },
+                pause: "⏸️ Pause",
+                resume: "▶️ Resume",
+                reset: "🔄 Reset",
+                showVideo: "📷 Show Video",
+                hideVideo: "👁️ Hide Video",
+                themeSystem: "💻 System",
+                themeLight: "☀️ Light",
+                themeDark: "🌙 Dark",
+                statusInit: "Initializing Camera...",
+                statusPaused: "Timer Paused.",
+                statusResumed: "Timer Resumed.",
+                statusReset: "Timer Reset.",
+                statusResetPaused: "Timer Reset (Paused).",
+                statusTimeUp: "⚠️ TIME UP!",
+                statusUserDetected: "User Detected. Sitting:",
+                statusUserAway: "User Away. Timer Paused:",
+                notificationTitle: "L.I.S.A. Alert",
+                notificationBody: "Time to move!"
+            },
+            zh: {
+                subtitle: "久坐提醒助手",
+                alertAfter: "提醒时间:",
+                timeOptions: {
+                    "10": "10 秒 (测试)",
+                    "30": "30 秒 (演示)",
+                    "1200": "20 分钟 (实际)",
+                    "1800": "30 分钟",
+                    "3600": "1 小时"
+                },
+                pause: "⏸️ 暂停",
+                resume: "▶️ 继续",
+                reset: "🔄 重置",
+                showVideo: "📷 显示视频",
+                hideVideo: "👁️ 隐藏视频",
+                themeSystem: "💻 跟随系统",
+                themeLight: "☀️ 浅色",
+                themeDark: "🌙 深色",
+                statusInit: "正在初始化摄像头...",
+                statusPaused: "计时器已暂停。",
+                statusResumed: "计时器已恢复。",
+                statusReset: "计时器已重置。",
+                statusResetPaused: "计时器已重置 (暂停中)。",
+                statusTimeUp: "⚠️ 时间到!",
+                statusUserDetected: "检测到用户。久坐时长:",
+                statusUserAway: "用户离开。计时器暂停:",
+                notificationTitle: "L.I.S.A. 提醒",
+                notificationBody: "该起来活动了!"
+            }
+        };
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            const t = translations[lang];
+
+            // Update Static Text
+            document.querySelector('h1 span').innerText = t.subtitle;
+            document.querySelector('label[for="timeSelect"]').innerText = t.alertAfter;
+            document.getElementById('resetBtn').innerText = t.reset;
+            
+            // Update Buttons based on state
+            const pauseBtn = document.getElementById('pauseBtn');
+            pauseBtn.innerText = isPaused ? t.resume : t.pause;
+
+            const viewBtn = document.getElementById('viewBtn');
+            viewBtn.innerText = showVideo ? t.hideVideo : t.showVideo;
+
+            // Update Dropdown Options
+            const timeOpts = timeSelect.options;
+            for (let i = 0; i < timeOpts.length; i++) {
+                const val = timeOpts[i].value;
+                if (t.timeOptions[val]) {
+                    timeOpts[i].innerText = t.timeOptions[val];
+                }
+            }
+
+            const themeOpts = document.getElementById('themeSelect').options;
+            themeOpts[0].innerText = t.themeSystem;
+            themeOpts[1].innerText = t.themeLight;
+            themeOpts[2].innerText = t.themeDark;
+
+            // Update Status Text (Immediate feedback)
+            // We trigger a quick UI update or let the next frame handle it
+        }
 
         // Request Notification Permission immediately
         if (Notification.permission !== "granted") {
@@ -207,22 +308,24 @@
         function toggleView() {
             showVideo = !showVideo;
             const btn = document.getElementById('viewBtn');
-            btn.innerText = showVideo ? "👁️ Hide Video" : "📷 Show Video";
+            const t = translations[currentLang];
+            btn.innerText = showVideo ? t.hideVideo : t.showVideo;
         }
 
         function togglePause() {
             isPaused = !isPaused;
             const btn = document.getElementById('pauseBtn');
+            const t = translations[currentLang];
             
             if (isPaused) {
-                btn.innerText = "▶️ Resume";
+                btn.innerText = t.resume;
                 btn.style.borderColor = "#00e676"; // Green border to suggest 'Go'
-                statusText.innerText = "Timer Paused.";
+                statusText.innerText = t.statusPaused;
                 statusText.style.color = "#ffeb3b";
             } else {
-                btn.innerText = "⏸️ Pause";
+                btn.innerText = t.pause;
                 btn.style.borderColor = ""; // Reset
-                statusText.innerText = "Timer Resumed.";
+                statusText.innerText = t.statusResumed;
                 statusText.style.color = "#00e676";
             }
         }
@@ -232,25 +335,19 @@
             lastAlertSecond = -1;
             lastNotificationSecond = -1;
             isPaused = false; 
+            const t = translations[currentLang];
             
             // Reset Pause Button UI
             const btn = document.getElementById('pauseBtn');
-            btn.innerText = "⏸️ Pause";
+            btn.innerText = t.pause;
             btn.style.borderColor = "";
 
-            statusText.innerText = "Timer Reset.";
+            statusText.innerText = t.statusReset;
             statusText.style.color = "#e0e0e0";
         }
         
         // Initialize controls
         // updateControlState(); // Removed
-        
-        function onResults(results) {
-            accumulatedTime = 0;
-            lastAlertSecond = -1;
-            statusText.innerText = isPaused ? "Timer Reset (Paused)." : "Timer Reset.";
-            statusText.style.color = "#e0e0e0";
-        }
         
         function drawGrid(ctx, width, height) {
             const step = 40;
@@ -316,10 +413,11 @@
 
             // 3. Display Logic
             const secondsSat = Math.floor(accumulatedTime / 1000);
+            const t = translations[currentLang];
 
             if (secondsSat >= timeLimitSeconds) {
                 // --- TRIGGER STATE ---
-                statusText.innerText = `⚠️ TIME UP! (${secondsSat}s / ${timeLimitSeconds}s)`;
+                statusText.innerText = `${t.statusTimeUp} (${secondsSat}s / ${timeLimitSeconds}s)`;
                 statusText.style.color = "#ff5252"; // Red
 
                 // 1. Browser Notification (Every 10 seconds after limit)
@@ -327,8 +425,8 @@
                 if ((secondsSat - timeLimitSeconds) % 10 === 0) {
                      if (lastNotificationSecond !== secondsSat) {
                          if (Notification.permission === "granted") { 
-                             new Notification("L.I.S.A. Alert", {
-                                 body: "Time to move!",
+                             new Notification(t.notificationTitle, {
+                                 body: t.notificationBody,
                                  icon: "https://cdn-icons-png.flaticon.com/512/2554/2554045.png"
                              });
                          }
@@ -348,10 +446,10 @@
             } else {
                 // --- NORMAL STATE ---
                 if (isUserPresent) {
-                    statusText.innerText = `User Detected. Sitting: ${secondsSat}s / ${timeLimitSeconds}s`;
+                    statusText.innerText = `${t.statusUserDetected} ${secondsSat}s / ${timeLimitSeconds}s`;
                     statusText.style.color = "#00e676"; // Green
                 } else {
-                    statusText.innerText = `User Away. Timer Paused: ${secondsSat}s`;
+                    statusText.innerText = `${t.statusUserAway} ${secondsSat}s`;
                     statusText.style.color = "#ffeb3b"; // Yellow
                 }
             }
