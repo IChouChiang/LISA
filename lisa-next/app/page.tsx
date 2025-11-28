@@ -54,6 +54,7 @@ const TRANSLATIONS = {
 export default function Home() {
   // --- STATE ---
   const [lang, setLang] = useState<Lang>('en');
+  const [theme, setTheme] = useState<Theme>('system');
   const [timeLimit, setTimeLimit] = useState(30);
   const [accumulatedTime, setAccumulatedTime] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
@@ -81,6 +82,29 @@ export default function Home() {
   const t = TRANSLATIONS[lang];
 
   // --- EFFECTS ---
+  // Theme Management
+  useEffect(() => {
+    const root = document.documentElement;
+    const applyTheme = (t: Theme) => {
+      if (t === 'system') {
+        const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        root.setAttribute('data-theme', systemTheme);
+      } else {
+        root.setAttribute('data-theme', t);
+      }
+    };
+
+    applyTheme(theme);
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = () => {
+      if (theme === 'system') applyTheme('system');
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [theme]);
+
   // Sync state to refs
   useEffect(() => { timeLimitRef.current = timeLimit; }, [timeLimit]);
   useEffect(() => { showVideoRef.current = showVideo; }, [showVideo]);
@@ -149,9 +173,10 @@ export default function Home() {
       ctx.drawImage(results.image, 0, 0, width, height);
     } else {
       // Privacy Grid
-      ctx.fillStyle = '#1e1e1e';
+      const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+      ctx.fillStyle = isLight ? '#f8fafc' : '#1e1e1e';
       ctx.fillRect(0, 0, width, height);
-      drawGrid(ctx, width, height);
+      drawGrid(ctx, width, height, isLight);
     }
 
     // 2. Logic
@@ -242,9 +267,9 @@ export default function Home() {
   };
 
   // Helper to draw grid
-  const drawGrid = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+  const drawGrid = (ctx: CanvasRenderingContext2D, w: number, h: number, isLight: boolean = false) => {
     const step = 40;
-    ctx.strokeStyle = '#333';
+    ctx.strokeStyle = isLight ? '#e2e8f0' : '#333';
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let x = 0; x <= w; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
@@ -254,9 +279,13 @@ export default function Home() {
 
   // --- RENDER ---
   const secondsSat = Math.floor(accumulatedTime / 1000);
+  const isOverLimit = secondsSat >= timeLimit;
   
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8 bg-gray-900 text-white">
+    <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-8 text-white relative overflow-hidden">
+      {/* Background Ambient Glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-blue-500/10 blur-[120px] rounded-full pointer-events-none"></div>
+      
       <Script 
         src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" 
         strategy="lazyOnload" 
@@ -273,78 +302,117 @@ export default function Home() {
         onLoad={() => setIsDrawingLoaded(true)} 
       />
 
-      <h1 className="text-4xl font-thin tracking-widest mb-2 text-green-400">
-        {t.title} <span className="text-sm text-gray-400">{t.subtitle}</span>
-      </h1>
+      {/* Header Section */}
+      <div className="z-10 flex flex-col items-center mb-8">
+        <h1 className="text-6xl md:text-8xl font-thin tracking-[0.2em] mb-4 text-center" style={{ color: 'rgb(var(--foreground-rgb))' }}>
+          {t.title}
+        </h1>
+        <div className="glass-panel px-4 py-1 rounded-full text-sm tracking-widest uppercase" style={{ color: 'rgb(var(--foreground-rgb))', opacity: 0.7 }}>
+          {t.subtitle}
+        </div>
+      </div>
 
+      {/* Status Pill */}
+      <div className={`z-10 mb-6 px-6 py-2 rounded-full glass-panel transition-all duration-500 flex items-center gap-2 ${isOverLimit ? 'border-red-500/50 bg-red-500/10' : 'border-green-500/30'}`}>
+        <div className={`w-2 h-2 rounded-full ${isOverLimit ? 'bg-red-500 animate-pulse' : (isUserPresent ? 'bg-green-400' : 'bg-yellow-400')}`}></div>
+        <span className={`font-medium ${isOverLimit ? 'text-red-500' : ''}`} style={{ color: isOverLimit ? undefined : 'rgb(var(--foreground-rgb))' }}>
+          {isOverLimit 
+            ? `${t.statusTimeUp} (${secondsSat}s / ${timeLimit}s)`
+            : `${isUserPresent ? t.statusUserDetected : t.statusUserAway} ${secondsSat}s`
+          }
+        </span>
+      </div>
 
-      {/* Controls */}
-      <div className="bg-gray-800 p-4 rounded-xl shadow-lg flex gap-4 items-center mb-6">
-        <select 
-          className="bg-gray-700 border border-gray-600 rounded px-3 py-2"
-          onChange={(e) => setTimeLimit(Number(e.target.value))}
-          value={timeLimit}
-        >
-          <option value={10}>10s (Test)</option>
-          <option value={30}>30s (Demo)</option>
-          <option value={1200}>20m</option>
-        </select>
+      {/* Video Container */}
+      <div className={`relative z-10 w-full max-w-[640px] aspect-[4/3] rounded-3xl overflow-hidden border border-white/10 transition-all duration-500 ${isOverLimit ? 'glow-red' : 'glow-green'}`}>
+        <video 
+          ref={videoRef} 
+          className={`absolute w-full h-full object-cover scale-x-[-1] transition-opacity duration-500 ${showVideo ? 'opacity-100' : 'opacity-0'}`} 
+          playsInline 
+          muted
+        ></video>
+        <canvas ref={canvasRef} width={640} height={480} className="absolute w-full h-full scale-x-[-1]"></canvas>
+        
+        {/* Overlay when paused */}
+        {isPaused && (
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center">
+            <div className="text-4xl">⏸️</div>
+          </div>
+        )}
+      </div>
 
-        <div className="w-px h-6 bg-gray-600 mx-2"></div>
+      {/* Controls Dock - Static Position */}
+      <div className="mt-8 z-20 glass-panel p-2 rounded-2xl flex flex-wrap justify-center items-center gap-2 shadow-2xl">
+        
+        {/* Time Select */}
+        <div className="relative group">
+          <select 
+            className="appearance-none bg-transparent text-sm font-medium px-4 py-3 rounded-xl glass-button cursor-pointer outline-none min-w-[80px] text-center"
+            onChange={(e) => setTimeLimit(Number(e.target.value))}
+            value={timeLimit}
+          >
+            <option value={10}>10s</option>
+            <option value={30}>30s</option>
+            <option value={1200}>20m</option>
+          </select>
+        </div>
 
+        <div className="w-px h-8 bg-gray-500/30 mx-1"></div>
+
+        {/* Play/Pause */}
         <button 
           onClick={() => {
             setIsPaused(!isPaused);
             requestNotificationPermission();
           }}
-          className={`px-4 py-2 rounded border ${isPaused ? 'border-green-500 text-green-400' : 'border-gray-600 hover:bg-gray-700'}`}
+          className={`p-3 rounded-xl glass-button ${isPaused ? 'text-yellow-500' : ''}`}
+          style={{ color: isPaused ? undefined : 'rgb(var(--foreground-rgb))' }}
+          title={isPaused ? t.controls.resume : t.controls.pause}
         >
-          {isPaused ? t.controls.resume : t.controls.pause}
+          {isPaused ? '▶️' : '⏸️'}
         </button>
         
+        {/* Reset */}
         <button 
           onClick={() => setAccumulatedTime(0)}
-          className="px-4 py-2 rounded border border-gray-600 hover:bg-gray-700"
+          className="p-3 rounded-xl glass-button"
+          style={{ color: 'rgb(var(--foreground-rgb))' }}
+          title={t.controls.reset}
         >
-          {t.controls.reset}
+          🔄
         </button>
 
+        {/* Toggle Video */}
         <button 
           onClick={() => setShowVideo(!showVideo)}
-          className="px-4 py-2 rounded border border-gray-600 hover:bg-gray-700"
+          className={`p-3 rounded-xl glass-button ${showVideo ? 'text-green-500' : ''}`}
+          style={{ color: showVideo ? undefined : 'rgb(var(--foreground-rgb))' }}
+          title={showVideo ? t.controls.hideVideo : t.controls.showVideo}
         >
-          {showVideo ? t.controls.hideVideo : t.controls.showVideo}
+          {showVideo ? '📷' : '👁️'}
         </button>
 
-        <div className="w-px h-6 bg-gray-600 mx-2"></div>
+        <div className="w-px h-8 bg-gray-500/30 mx-1"></div>
 
+        {/* Theme Select */}
         <select 
-          className="bg-gray-700 border border-gray-600 rounded px-3 py-2"
-          onChange={(e) => setLang(e.target.value as Lang)}
-          value={lang}
+          className="appearance-none bg-transparent text-sm font-medium px-4 py-3 rounded-xl glass-button cursor-pointer outline-none text-center"
+          onChange={(e) => setTheme(e.target.value as Theme)}
+          value={theme}
         >
-          <option value="en">🇺🇸 EN</option>
-          <option value="zh">🇨🇳 ZH</option>
+          <option value="system">💻</option>
+          <option value="light">☀️</option>
+          <option value="dark">🌙</option>
         </select>
-      </div>
 
-      {/* Video Container */}
-      <div className="relative w-[640px] h-[480px] rounded-2xl overflow-hidden border-2 border-gray-700 shadow-2xl shadow-green-900/20">
-        <video 
-          ref={videoRef} 
-          className={`absolute w-full h-full object-cover scale-x-[-1] ${showVideo ? 'opacity-100' : 'opacity-0'}`} 
-          playsInline 
-          muted
-        ></video>
-        <canvas ref={canvasRef} width={640} height={480} className="absolute w-full h-full scale-x-[-1]"></canvas>
-      </div>
-
-      {/* Status */}
-      <div className={`mt-6 text-xl font-medium px-6 py-3 rounded-lg bg-gray-800 transition-colors ${secondsSat >= timeLimit ? 'text-red-500' : 'text-green-400'}`}>
-        {secondsSat >= timeLimit 
-          ? `${t.statusTimeUp} (${secondsSat}s / ${timeLimit}s)`
-          : `${isUserPresent ? t.statusUserDetected : t.statusUserAway} ${secondsSat}s`
-        }
+        {/* Language */}
+        <button 
+          onClick={() => setLang(lang === 'en' ? 'zh' : 'en')}
+          className="px-4 py-3 rounded-xl glass-button text-sm font-bold"
+          style={{ color: 'rgb(var(--foreground-rgb))' }}
+        >
+          {lang === 'en' ? 'EN' : '中'}
+        </button>
       </div>
     </main>
   );
