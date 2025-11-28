@@ -1,6 +1,6 @@
 **English** | [简体中文](./README_zh.md)
 
-# L.I.S.A. - Long Interval Sitting Alert (AI Posture Guardian)
+# L.I.S.A. - Long Interval Sitting Alert
 
 L.I.S.A. is an intelligent posture monitoring system designed to prevent long-term sitting health issues. It uses computer vision to track user presence and an AI-powered backend to provide varied, human-like reminders to take a break.
 
